@@ -1,47 +1,58 @@
 pipeline {
-    parameters {
-        booleanParam(name: 'autoApprove', defaultValue: false, description: 'Automatically run apply after generating plan?')
-    }
-
-    environment {
-        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-    }
-
     agent any
 
+    environment {
+        TF_PATH = '"C:\\Binaries\\Terraform_Binaries\\terraform.exe"'
+        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')      // Jenkins credential ID
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')  // Jenkins credential ID
+        AWS_DEFAULT_REGION    = 'us-east-1' // Change this to your region if needed
+    }
+
     stages {
-        stage('Terraform Init & Plan') {
+
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/soundarrajasekaran-0372/your-repo.git'
+            }
+        }
+
+        stage('Terraform Init') {
             steps {
                 dir('terraform') {
-                    bat 'terraform init'
-                    bat 'terraform plan -out=tfplan'
-                    bat 'terraform show -no-color tfplan > tfplan.txt'
+                    bat "${TF_PATH} init"
                 }
             }
         }
 
-        stage('Approval') {
-            when {
-                not {
-                    equals expected: true, actual: params.autoApprove
-                }
-            }
+        stage('Terraform Plan') {
             steps {
-                script {
-                    def plan = readFile 'terraform/tfplan.txt'
-                    input message: "Do you want to apply the plan?",
-                    parameters: [text(name: 'Plan', description: 'Please review the plan', defaultValue: plan)]
+                dir('terraform') {
+                    bat "${TF_PATH} plan -out=tfplan"
                 }
             }
         }
 
-        stage('Apply') {
+        stage('Manual Approval') {
+            steps {
+                input message: 'Do you want to proceed with Terraform Apply?', ok: 'Yes, Apply'
+            }
+        }
+
+        stage('Terraform Apply') {
             steps {
                 dir('terraform') {
-                    bat 'terraform apply -input=false tfplan'
+                    bat "${TF_PATH} apply -auto-approve tfplan"
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Terraform pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Terraform pipeline failed.'
         }
     }
 }
